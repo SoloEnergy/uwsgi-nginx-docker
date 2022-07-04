@@ -1,4 +1,4 @@
-FROM python:3.8-alpine3.11
+FROM python:3.8-alpine3.13
 
 LABEL maintainer="Sebastian Ramirez <tiangolo@gmail.com>"
 
@@ -21,6 +21,10 @@ COPY uwsgi.ini /etc/uwsgi/
 RUN apk add --no-cache supervisor
 # Custom Supervisord config
 COPY supervisord-alpine.ini /etc/supervisor.d/supervisord.ini
+
+# Copy stop-supervisor.sh to kill the supervisor and substasks on app failure
+COPY stop-supervisor.sh /etc/supervisor/stop-supervisor.sh
+RUN chmod +x /etc/supervisor/stop-supervisor.sh
 
 # uWSGI Python plugin
 # As an env var to re-use the config file

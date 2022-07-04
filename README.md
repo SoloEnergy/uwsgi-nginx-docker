@@ -2,17 +2,31 @@
 
 ## Supported tags and respective `Dockerfile` links
 
-* [`python3.8`, `latest` _(Dockerfile)_](https://github.com/tiangolo/uwsgi-nginx-docker/blob/master/docker-images/python3.8.dockerfile)
-* [`python3.8-alpine` _(Dockerfile)_](https://github.com/tiangolo/uwsgi-nginx-docker/blob/master/docker-images/python3.8-alpine.dockerfile)
+* [`python3.10`, `latest` _(Dockerfile)_](https://github.com/tiangolo/uwsgi-nginx-docker/blob/master/docker-images/python3.10.dockerfile)
+* [`python3.9`, _(Dockerfile)_](https://github.com/tiangolo/uwsgi-nginx-docker/blob/master/docker-images/python3.9.dockerfile)
+* [`python3.8` _(Dockerfile)_](https://github.com/tiangolo/uwsgi-nginx-docker/blob/master/docker-images/python3.8.dockerfile)
 * [`python3.7`, _(Dockerfile)_](https://github.com/tiangolo/uwsgi-nginx-docker/blob/master/docker-images/python3.7.dockerfile)
 * [`python3.6` _(Dockerfile)_](https://github.com/tiangolo/uwsgi-nginx-docker/blob/master/docker-images/python3.6.dockerfile)
+
+## Discouraged tags
+
+* [`python3.8-alpine` _(Dockerfile)_](https://github.com/tiangolo/uwsgi-nginx-docker/blob/master/docker-images/python3.8-alpine.dockerfile)
+
+To learn more about why Alpine images are discouraged for Python read the note at the end: [🚨 Alpine Python Warning](#-alpine-python-warning).
+
+## Deprecated
+
+These tags are no longer supported:
+
 * [`python2.7` _(Dockerfile)_](https://github.com/tiangolo/uwsgi-nginx-docker/blob/master/docker-images/python2.7.dockerfile)
 
-**Note**: Note: There are [tags for each build date](https://hub.docker.com/r/tiangolo/uwsgi-nginx/tags). If you need to "pin" the Docker image version you use, you can select one of those tags. E.g. `tiangolo/uwsgi-nginx:python3.7-2019-09-28`.
+---
+
+**Note**: There are [tags for each build date](https://hub.docker.com/r/tiangolo/uwsgi-nginx/tags). If you need to "pin" the Docker image version you use, you can select one of those tags. E.g. `tiangolo/uwsgi-nginx:python3.7-2019-09-28`.
 
 # uwsgi-nginx
 
-**Docker** image with **uWSGI** and **Nginx** for web applications in **Python 3.6** and above, and **Python 2.7** (as **Flask**) in a single container. Optionally with Alpine Linux.
+**Docker** image with **uWSGI** and **Nginx** for web applications in **Python** (as **Flask**) in a single container. Optionally with Alpine Linux.
 
 ## Description
 
@@ -50,17 +64,93 @@ If you need to use an older WSGI-based framework like Flask or Django (instead o
 
 **Docker Hub image**: [https://hub.docker.com/r/tiangolo/uwsgi-nginx/](https://hub.docker.com/r/tiangolo/uwsgi-nginx/)
 
-## How to use
+## 🚨 WARNING: You Probably Don't Need this Docker Image
 
-* You shouldn't have to clone the GitHub repo. You should use it as a base image for other images, using this in your `Dockerfile`:
+You are probably using **Kubernetes** or similar tools. In that case, you probably **don't need this image** (or any other **similar base image**). You are probably better off **building a Docker image from scratch**.
+
+---
+
+If you have a cluster of machines with **Kubernetes**, Docker Swarm Mode, Nomad, or other similar complex system to manage distributed containers on multiple machines, then you will probably want to **handle replication** at the **cluster level** instead of using a **process manager** in each container that starts multiple **worker processes**, which is what this Docker image does.
+
+In those cases (e.g. using Kubernetes) you would probably want to build a **Docker image from scratch**, installing your dependencies, and running **a single process** instead of this image.
+
+For example, using [Gunicorn](https://gunicorn.org/) you could have a file `app/gunicorn_conf.py` with:
+
+```Python
+# Gunicorn config variables
+loglevel = "info"
+errorlog = "-"  # stderr
+accesslog = "-"  # stdout
+worker_tmp_dir = "/dev/shm"
+graceful_timeout = 120
+timeout = 120
+keepalive = 5
+threads = 3
+```
+
+And then you could have a `Dockerfile` with:
 
 ```Dockerfile
-FROM tiangolo/uwsgi-nginx:python3.8
+FROM python:3.9
+
+WORKDIR /code
+
+COPY ./requirements.txt /code/requirements.txt
+
+RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
+
+COPY ./app /code/app
+
+CMD ["gunicorn", "--conf", "app/gunicorn_conf.py", "--bind", "0.0.0.0:80", "app.main:app"]
+```
+
+You can read more about these ideas in the [FastAPI documentation about: FastAPI in Containers - Docker](https://fastapi.tiangolo.com/deployment/docker/#replication-number-of-processes) as the same ideas would apply to other web applications in containers.
+
+## When to Use this Docker Image
+
+### A Simple App
+
+You could want a process manager running multiple worker processes in the container if your application is **simple enough** that you don't need (at least not yet) to fine-tune the number of processes too much, and you can just use an automated default, and you are running it on a **single server**, not a cluster.
+
+### Docker Compose
+
+You could be deploying to a **single server** (not a cluster) with **Docker Compose**, so you wouldn't have an easy way to manage replication of containers (with Docker Compose) while preserving the shared network and **load balancing**.
+
+Then you could want to have **a single container** with a **process manager** starting **several worker processes** inside, as this Docker image does.
+
+### Prometheus and Other Reasons
+
+You could also have **other reasons** that would make it easier to have a **single container** with **multiple processes** instead of having **multiple containers** with **a single process** in each of them.
+
+For example (depending on your setup) you could have some tool like a Prometheus exporter in the same container that should have access to **each of the requests** that come.
+
+In this case, if you had **multiple containers**, by default, when Prometheus came to **read the metrics**, it would get the ones for **a single container each time** (for the container that handled that particular request), instead of getting the **accumulated metrics** for all the replicated containers.
+
+Then, in that case, it could be simpler to have **one container** with **multiple processes**, and a local tool (e.g. a Prometheus exporter) on the same container collecting Prometheus metrics for all the internal processes and exposing those metrics on that single container.
+
+---
+
+Read more about it all in the [FastAPI documentation about: FastAPI in Containers - Docker](https://fastapi.tiangolo.com/deployment/docker/), as the same concepts apply to other web applications in containers.
+
+## How to use
+
+You don't have to clone this repo.
+
+You can use this image as a base image for other images.
+
+Assuming you have a file `requirements.txt`, you could have a `Dockerfile` like this:
+
+```Dockerfile
+FROM tiangolo/uwsgi-nginx:python3.9
+
+COPY ./requirements.txt /app/requirements.txt
+
+RUN pip install --no-cache-dir --upgrade -r /app/requirements.txt
+
+COPY ./app /app
 
 # Your Dockerfile code...
 ```
-
-* But, if you need Python 2.7 that line would have to be `FROM tiangolo/uwsgi-nginx:python2.7`.
 
 * By default it will try to find a uWSGI config file in `/app/uwsgi.ini`.
 
@@ -77,7 +167,7 @@ If you need to use a directory for your app different than `/app`, you can overr
 For example, if you needed to have your application directory in `/application` instead of `/app`, your `Dockerfile` would look like:
 
 ```Dockerfile
-FROM tiangolo/uwsgi-nginx:python3.8
+FROM tiangolo/uwsgi-nginx:python3.9
 
 ENV UWSGI_INI /application/uwsgi.ini
 
@@ -109,7 +199,7 @@ Have in mind that `UWSGI_CHEAPER` must be lower than `UWSGI_PROCESSES`.
 So, if, for example, you need to start with 4 processes and grow to a maximum of 64, your `Dockerfile` could look like:
 
 ```Dockerfile
-FROM tiangolo/uwsgi-nginx:python3.8
+FROM tiangolo/uwsgi-nginx:python3.9
 
 ENV UWSGI_CHEAPER 4
 ENV UWSGI_PROCESSES 64
@@ -128,7 +218,7 @@ For example, if you wanted to set the maximum upload file size to 1 MB (the defa
 So, your `Dockerfile` would look something like:
 
 ```Dockerfile
-FROM tiangolo/uwsgi-nginx:python3.8
+FROM tiangolo/uwsgi-nginx:python3.9
 
 ENV NGINX_MAX_UPLOAD 1m
 
@@ -146,7 +236,7 @@ You might also need to create the respective `EXPOSE` Docker instruction.
 You can do that in your `Dockerfile`, it would look something like:
 
 ```Dockerfile
-FROM tiangolo/uwsgi-nginx:python3.8
+FROM tiangolo/uwsgi-nginx:python3.9
 
 ENV LISTEN_PORT 8080
 
@@ -200,7 +290,7 @@ or you can set it to the keyword `auto` and it will try to autodetect the number
 For example, using `auto`, your Dockerfile could look like:
 
 ```Dockerfile
-FROM tiangolo/uwsgi-nginx:python3.8
+FROM tiangolo/uwsgi-nginx:python3.9
 
 ENV NGINX_WORKER_PROCESSES auto
 
@@ -291,6 +381,24 @@ You probably want to override it or delete it in your project.
 
 It is there in case you run this image by itself and not as a base image for your own `Dockerfile`, so that you get a sample app without errors.
 
+## 🚨 Alpine Python Warning
+
+In short: You probably shouldn't use Alpine for Python projects, instead use the `slim` Docker image versions.
+
+---
+
+Do you want more details? Continue reading 👇
+
+Alpine is more useful for other languages where you build a static binary in one Docker image stage (using multi-stage Docker building) and then copy it to a simple Alpine image, and then just execute that binary. For example, using Go.
+
+But for Python, as Alpine doesn't use the standard tooling used for building Python extensions, when installing packages, in many cases Python (`pip`) won't find a precompiled installable package (a "wheel") for Alpine. And after debugging lots of strange errors you will realize that you have to install a lot of extra tooling and build a lot of dependencies just to use some of these common Python packages. 😩
+
+This means that, although the original Alpine image might have been small, you end up with a an image with a size comparable to the size you would have gotten if you had just used a standard Python image (based on Debian), or in some cases even larger. 🤯
+
+And in all those cases, it will take much longer to build, consuming much more resources, building dependencies for longer, and also increasing its carbon footprint, as you are using more CPU time and energy for each build. 🌳
+
+If you want slim Python images, you should instead try and use the `slim` versions that are still based on Debian, but are smaller. 🤓
+
 ## Tests
 
 All the image tags, configurations, environment variables and application options are tested.
@@ -305,6 +413,19 @@ You can click the "watch" button at the top right and select "Releases only" to 
 
 ### Latest Changes
 
+* 🔧 Run tests only on PRs or when pushing on master to avoid double CI. PR [#149](https://github.com/tiangolo/uwsgi-nginx-docker/pull/149) by [@tiangolo](https://github.com/tiangolo).
+* ⬆ Upgrade Nginx to version 1.21.6 and Alpine to version 3.13. PR [#148](https://github.com/tiangolo/uwsgi-nginx-docker/pull/148) by [@haley-comet](https://github.com/haley-comet).
+* ✨ Add support for Python 3.10 and upgrade uWSGI to `2.0.20`. PR [#127](https://github.com/tiangolo/uwsgi-nginx-docker/pull/127) by [@tiangolo](https://github.com/tiangolo).
+* 📝 Add note to discourage Alpine with Python. PR [#124](https://github.com/tiangolo/uwsgi-nginx-docker/pull/124) by [@tiangolo](https://github.com/tiangolo).
+* 📝 Add Kubernetes warning, when to use this image. PR [#122](https://github.com/tiangolo/uwsgi-nginx-docker/pull/122) by [@tiangolo](https://github.com/tiangolo).
+* 🔥 Remove support for Python 2.7. PR [#123](https://github.com/tiangolo/uwsgi-nginx-docker/pull/123) by [@tiangolo](https://github.com/tiangolo).
+* ✏️ Fix typo duplicate "Note" in Readme. PR [#121](https://github.com/tiangolo/uwsgi-nginx-docker/pull/121) by [@tiangolo](https://github.com/tiangolo).
+* ⬆️ Update pip install command with flag --no-cache-dir to reduce disk used. PR [#120](https://github.com/tiangolo/uwsgi-nginx-docker/pull/120) by [@tiangolo](https://github.com/tiangolo).
+* 👷 Update Latest Changes GitHub Action. PR [#119](https://github.com/tiangolo/uwsgi-nginx-docker/pull/119) by [@tiangolo](https://github.com/tiangolo).
+* 👷 Add Dependabot and external dependencies, to get automatic upgrade PRs. PR [#111](https://github.com/tiangolo/uwsgi-nginx-docker/pull/111) by [@tiangolo](https://github.com/tiangolo).
+* ✨ Quit Supervisor on errors, to allow orchestrators to handle it. PR [#110](https://github.com/tiangolo/uwsgi-nginx-docker/pull/110) by [@tiangolo](https://github.com/tiangolo).
+* ✨ Add Python 3.9. PR [#101](https://github.com/tiangolo/uwsgi-nginx-docker/pull/101) by [@sjadema](https://github.com/sjadema).
+* ⬆ Upgrade Nginx to the latest version of the official images. PR [#107](https://github.com/tiangolo/uwsgi-nginx-docker/pull/107) by [@tiangolo](https://github.com/tiangolo).
 * 🐛 Fix broken link to TechEmpower benchmarks. PR [#96](https://github.com/tiangolo/uwsgi-nginx-docker/pull/96) by [@tiangolo](https://github.com/tiangolo).
 * 👷 Add GitHub Action latest-changes, update issue-manager. PR [#92](https://github.com/tiangolo/uwsgi-nginx-docker/pull/92) by [@tiangolo](https://github.com/tiangolo).
 * Fix Python 3.8 Alpine environment for installed packages. PR [#84](https://github.com/tiangolo/uwsgi-nginx-docker/pull/84).

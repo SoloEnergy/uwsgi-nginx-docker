@@ -4,8 +4,8 @@
 # Ref: https://github.com/nginxinc/docker-nginx/blob/f958fbacada447737319e979db45a1da49123142/mainline/debian/Dockerfile
 
 # Standard set up Nginx
-export NGINX_VERSION=1.21.1
-export NJS_VERSION=0.6.1
+export NGINX_VERSION=1.21.6
+export NJS_VERSION=0.7.3
 export PKG_RELEASE=1~buster
 
 set -x \
@@ -75,8 +75,6 @@ set -x \
         apt-get purge -y --auto-remove \
         && rm -rf "$tempDir" /etc/apt/sources.list.d/temp.list; \
     fi \
-
-# forward request and error logs to docker log collector
-ln -sf /dev/stdout /var/log/nginx/access.log \
-    && ln -sf /dev/stderr /var/log/nginx/error.log
+    && ln -sf /dev/stdout /var/log/nginx/access.log \
+    && ln -sf /dev/stderr /var/log/nginx/error.log \
 # Standard set up Nginx finished
