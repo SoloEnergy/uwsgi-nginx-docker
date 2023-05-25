@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - master
+  schedule:
+    # cron every week on monday
+    - cron: "0 0 * * 1"
 
 jobs:
   build:
@@ -11,7 +14,9 @@ jobs:
       matrix:
         image:
           - name: latest
-            python_version: "3.10"
+            python_version: "3.11"
+          - name: python3.11
+            python_version: "3.11"
           - name: python3.10
             python_version: "3.10"
           - name: python3.9
@@ -20,16 +25,14 @@ jobs:
             python_version: "3.8"
           - name: python3.7
             python_version: "3.7"
-          - name: python3.6
-            python_version: "3.6"
           - name: python3.8-alpine
             python_version: "3.8"
       fail-fast: true
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3.1.0
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v4
         with:
           python-version: "3.7"
       - name: Install Dependencies
@@ -42,3 +45,9 @@ jobs:
           PYTHON_VERSION: ${{ matrix.image.python_version }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Docker Hub Description
+        uses: peter-evans/dockerhub-description@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: tiangolo/uwsgi-nginx
